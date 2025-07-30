@@ -5,8 +5,8 @@ import unicodedata
 from io import BytesIO
 
 st.set_page_config(
-    layout="wide",        # 🔁 Esto activa el ancho completo
-    page_title="Validador y limpiador", 
+    layout="wide",
+    page_title="Validador y limpiador",
     page_icon="🔍"
 )
 
@@ -18,7 +18,7 @@ palabras_clave = [
     "municipio", "localidad", "nombre localidad", "departamento", "niu", "referencia"
 ]
 
-# Columnas que se deben convertir a mayúsculas
+# Columnas que deben ir en mayúscula
 columnas_mayus = [
     "nombre", "apellidos", "vereda", "marca",
     "municipio", "localidad", "nombre localidad", "departamento"
@@ -27,17 +27,16 @@ columnas_mayus = [
 def limpiar_texto(texto, convertir_mayuscula=False, nombre_columna=""):
     if pd.isnull(texto):
         return texto
-    texto = str(texto).strip()  # elimina espacios al inicio/final
+    texto = str(texto).strip()
 
-    # Conservar guion solo si es 'serial interno'
     columna_minus = nombre_columna.lower()
     if "serial interno" in columna_minus or "niu" in columna_minus or "referencia" in columna_minus:
-        texto = re.sub(r"[^\w\s\-]", "", texto)  # permite letras, números, guion y espacio
+        texto = re.sub(r"[^\w\s\-]", "", texto)  # permite guiones
     else:
-        texto = re.sub(r"[^\w\s]", "", texto)    # quitar todo lo que no sea letra, número o espacio
+        texto = re.sub(r"[^\w\s]", "", texto)
 
-    texto = re.sub(r"\s{2,}", " ", texto)  # quitar dobles espacios
-    texto = unicodedata.normalize("NFD", texto).encode("ascii", "ignore").decode("utf-8")  # quitar tildes y ñ
+    texto = re.sub(r"\s{2,}", " ", texto)
+    texto = unicodedata.normalize("NFD", texto).encode("ascii", "ignore").decode("utf-8")  # quitar tildes/ñ
 
     if convertir_mayuscula:
         texto = texto.upper()
@@ -96,6 +95,15 @@ if uploaded_file:
     else:
         df = pd.read_excel(uploaded_file)
 
+    # 👉 Solo convertir columnas que contengan "fecha" en el nombre
+    for col in df.columns:
+        if "fecha" in col.lower():
+            try:
+                df[col] = pd.to_datetime(df[col], errors="raise")
+                df[col] = df[col].dt.strftime('%Y-%m-%d')
+            except:
+                st.warning(f"No se pudo convertir la columna '{col}' a formato fecha.")
+
     st.subheader("👀 Vista previa del archivo")
     st.dataframe(df.head())
 
@@ -128,14 +136,13 @@ if uploaded_file:
             else:
                 st.success(f"✅ Sin errores en la columna '{col}'.")
 
-        # Botón para limpiar y convertir
         if st.button("🧼 Limpiar texto y convertir a mayúsculas (si aplica)"):
             for col in columnas_revisar:
                 convertir = any(p in col.lower() for p in columnas_mayus)
                 df[col] = df[col].apply(lambda x: limpiar_texto(x, convertir_mayuscula=convertir, nombre_columna=col))
             st.success("Texto limpiado correctamente ✅")
 
-            # Detectar y corregir duplicados en seriales
+            # Detectar y corregir duplicados
             if columnas_serial:
                 col_serial = columnas_serial[0]
                 col_niu = columnas_niu[0] if columnas_niu else None
@@ -150,11 +157,10 @@ if uploaded_file:
             st.subheader("📄 Vista previa del archivo limpio")
             st.dataframe(df.head())
 
-            # Opciones de descarga
+            # Descargar archivos
             output_excel = BytesIO()
             df.to_excel(output_excel, index=False, engine="openpyxl")
             output_excel.seek(0)
-
             output_csv = df.to_csv(index=False).encode("utf-8")
 
             col1, col2 = st.columns(2)
