@@ -62,28 +62,49 @@ def detectar_errores(texto):
 
 def corregir_duplicados(df, col_serial, col_niu):
     df = df.copy()
-    duplicados = df[df.duplicated(subset=[col_serial], keep=False)]
+
+    # Paso 1: Normalizar seriales para búsqueda insensible a mayúsculas
+    seriales_norm = df[col_serial].astype(str).str.lower()
+
+    # Paso 2: Detectar duplicados ignorando mayúsculas
+    duplicados_mask = seriales_norm.duplicated(keep=False)
+    duplicados_df = df[duplicados_mask]
+
     ajustes_realizados = []
 
-    if not duplicados.empty:
+    if not duplicados_df.empty:
+        st.warning("⚠️ Se encontraron duplicados en la columna de serial (sin distinguir mayúsculas):")
+        st.dataframe(duplicados_df[[col_niu, col_serial]])
+
         contador = {}
-        for idx, row in duplicados.iterrows():
-            valor = row[col_serial]
-            if valor not in contador:
-                contador[valor] = 1
+        for idx in duplicados_df.index:
+            original = df.at[idx, col_serial]
+            original_norm = str(original).lower()
+
+            if original_norm not in contador:
+                contador[original_norm] = 1
             else:
-                contador[valor] += 1
-            nuevo_valor = f"{valor}N{contador[valor]}"
-            while nuevo_valor in df[col_serial].values:
-                contador[valor] += 1
-                nuevo_valor = f"{valor}N{contador[valor]}"
+                contador[original_norm] += 1
+
+            nuevo_valor = f"{original}N{contador[original_norm]}"
+            
+            # Asegurar que el nuevo valor también sea único ignorando mayúsculas
+            while nuevo_valor.lower() in df[col_serial].str.lower().values:
+                contador[original_norm] += 1
+                nuevo_valor = f"{original}N{contador[original_norm]}"
+            
             df.at[idx, col_serial] = nuevo_valor
+
             ajustes_realizados.append({
-                "NIU": row[col_niu] if col_niu else "Desconocido",
-                "Duplicado original": valor,
+                "NIU": df.at[idx, col_niu] if col_niu else "Desconocido",
+                "Duplicado original": original,
                 "Nuevo valor": nuevo_valor
             })
+    else:
+        st.success("✅ No se encontraron duplicados en la columna serial.")
+
     return df, ajustes_realizados
+
 
 # Subir archivo
 uploaded_file = st.file_uploader("📤 Carga un archivo Excel o CSV", type=["xlsx", "xls", "csv"])
